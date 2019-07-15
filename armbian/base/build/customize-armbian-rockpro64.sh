@@ -835,6 +835,7 @@ http {
   access_log /var/log/nginx/access.log;
   error_log /var/log/nginx/error.log;
   include /etc/nginx/sites-enabled/*.conf;
+  include /data/nginx/sites-enabled/*.conf;
 }
 EOF
 
@@ -866,8 +867,9 @@ PrivateTmp=true
 EOF
 
 # DASHBOARD OVER HDMI ----------------------------------------------------------
-if [[ "${BASE_HDMI_BUILD}" == "true" ]]; then
+mkdir -p /etc/systemd/system/getty@tty1.service.d/
 
+if [[ "${BASE_HDMI_BUILD}" == "true" ]]; then
   apt-get install -y --no-install-recommends xserver-xorg x11-xserver-utils xinit openbox chromium
 
   cat << 'EOF' > /etc/xdg/openbox/autostart
