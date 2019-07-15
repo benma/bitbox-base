@@ -225,6 +225,12 @@ echo "BUILD_DATE='$(date +%Y-%m-%d)'" > "${SYSCONFIG_PATH}/BUILD_DATE"
 echo "BUILD_TIME='$(date +%H:%M)'" > "${SYSCONFIG_PATH}/BUILD_TIME"
 echo "BUILD_COMMIT='$(cat /opt/shift/config/latest_commit)'" > "${SYSCONFIG_PATH}/BUILD_COMMIT"
 
+## set hostname
+mkdir -p /data/network
+mv /etc/hostname /data/network/hostname
+ln -sf /data/network/hostname /etc/hostname
+/opt/shift/scripts/bbb-config.sh set hostname "${BASE_HOSTNAME}"
+
 ## set debug console to only use display, not serial console ttyS2 over UART
 echo 'console=display' >> /boot/armbianEnv.txt
 
@@ -258,9 +264,6 @@ EOF
 
 ## disable ssh login messages
 echo "MOTD_DISABLE='header tips updates armbian-config'" >> /etc/default/armbian-motd
-
-## set hostname
-/opt/shift/scripts/bbb-config.sh set hostname "${BASE_HOSTNAME}"
 
 ## prepare SSD mount point
 mkdir -p /mnt/ssd/
