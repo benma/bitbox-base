@@ -16,6 +16,8 @@ import (
 const version string = "0.0.1"
 
 func main() {
+	hsmtest := flag.Bool("hsmtest", false, "For NickeZ and conte91 to experiment with the HSM Go lib")
+
 	middlewarePort := flag.String("middlewareport", "8845", "Port the middleware should listen on (default 8845)")
 	electrsRPCPort := flag.String("electrsport", "51002", "Electrs rpc port")
 	dataDir := flag.String("datadir", ".base", "Directory where middleware persistent data like noise keys is stored")
@@ -29,6 +31,11 @@ func main() {
 	imageUpdateInfoURL := flag.String("updateinfourl", "https://shiftcrypto.ch/updates/base.json", "URL to query information about updates from (defaults to https://shiftcrypto.ch/updates/base.json)")
 	notificationNamedPipePath := flag.String("notificationNamedPipePath", "/tmp/middleware-notification.pipe", "notificationNamedPipe specifies the path where the Middleware creates a named pipe to receive notifications from other processes on the BitBoxBase (defaults to /tmp/middleware-notification.pipe)")
 	flag.Parse()
+
+	if *hsmtest {
+		hsmTest()
+		return
+	}
 
 	argumentMap := make(map[string]string)
 	argumentMap["middlewarePort"] = *middlewarePort
