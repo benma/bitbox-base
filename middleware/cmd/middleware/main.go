@@ -16,6 +16,8 @@ import (
 const version string = "0.0.1"
 
 func main() {
+	hsmtest := flag.Bool("hsmtest", false, "For NickeZ and conte91 to experiment with the HSM Go lib")
+
 	middlewarePort := flag.String("middlewareport", "8845", "Port the middleware should listen on (default 8845)")
 	bitcoinRPCUser := flag.String("rpcuser", "rpcuser", "Bitcoin rpc user name")
 	bitcoinRPCPassword := flag.String("rpcpassword", "rpcpassword", "Bitcoin rpc password")
@@ -31,6 +33,11 @@ func main() {
 	redisMock := flag.Bool("redismock", false, "Mock redis for development instead of connecting to a redis server, default is 'false', use 'true' as an argument to mock")
 	imageUpdateInfoURL := flag.String("updateinfourl", "https://shiftcrypto.ch/updates/base.json", "URL to query information about updates from (defaults to https://shiftcrypto.ch/updates/base.json)")
 	flag.Parse()
+
+	if *hsmtest {
+		hsmTest()
+		return
+	}
 
 	argumentMap := make(map[string]string)
 	argumentMap["middlewarePort"] = *middlewarePort
