@@ -18,8 +18,10 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumCAMpl/TFQ4/5kLM=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
+github.com/digitalbitbox/bitbox-base v0.0.0-20191106131148-4a7506bb2663 h1:S7ymEMzKCvfTKr/RdheTKCIF60zyprQ+J6W4+tgCPZw=
 github.com/digitalbitbox/bitbox02-api-go v0.0.0-20191106201146-c85f8983ca2e h1:lkINrVDcIefxmdzIyjGWPIV699JVx/52ak1moTZMTz0=
 github.com/digitalbitbox/bitbox02-api-go v0.0.0-20191106201146-c85f8983ca2e/go.mod h1:ALZSu5odFrNfKaXguw3aAC6fDFnBfj8zhZKzj2PQy5g=
+github.com/digitalbitbox/bitbox02-api-go v0.0.0-20191106123027-a1137ffb5a96 h1:dfOY+n0ZpWAaNl/KGm89oI6yRoIgN9Iyd0s9jsK4BtU=
 github.com/flynn/noise v0.0.0-20180327030543-2492fe189ae6 h1:u/UEqS66A5ckRmS4yNpjmVH56sVtS/RfclBAYocb4as=
 github.com/flynn/noise v0.0.0-20180327030543-2492fe189ae6/go.mod h1:1i71OnUq3iUe1ma7Lr6yG6/rjvM3emb6yoL7xLFzcVQ=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
