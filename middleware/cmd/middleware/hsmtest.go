@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"encoding/hex"
 	"io"
 	"log"
+	"os"
+	"strings"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/digitalbitbox/bitbox02-api-go/api/bootloader"
 	"github.com/digitalbitbox/bitbox02-api-go/api/common"
 	"github.com/digitalbitbox/bitbox02-api-go/api/firmware"
-	"github.com/digitalbitbox/bitbox02-api-go/communication/u2fhid"
+	//"github.com/digitalbitbox/bitbox02-api-go/communication/u2fhid"
 	"github.com/digitalbitbox/bitbox02-api-go/communication/usart"
 	"github.com/digitalbitbox/bitbox02-api-go/util/semver"
 	"github.com/flynn/noise"
@@ -46,7 +49,7 @@ func getBitBox02USB() io.ReadWriteCloser {
 }
 
 func getBitBox02UART() io.ReadWriteCloser {
-	c := &serial.Config{Name: "/dev/ttyUSB0", Baud: 115200}
+	c := &serial.Config{Name: "/dev/ttyUSB0", Baud: 115200, Parity: 0}
 	s, err := serial.OpenPort(c)
 	if err != nil {
 		panic(err)
@@ -92,8 +95,7 @@ func (communication usartCommunication) SendFrame(msg string) error {
 	return communication.Communication.SendFrame([]byte(msg))
 }
 
-func hsmFirmwareTest(communication firmware.Communication) {
-
+func hsmFirmwareConnect(communication firmware.Communication) (*firmware.Device, error) {
 	device := firmware.NewDevice(
 		// hardcoded version for now, in the future can be `nil` with autodetection using OP_INFO
 		semver.NewSemVer(4, 2, 2),
@@ -103,41 +105,88 @@ func hsmFirmwareTest(communication firmware.Communication) {
 		communication,
 		&bitbox02Logger{},
 	)
+	err := device.Init(false)
+	return device, err;
+}
 
-	err := device.Init()
-	if err != nil {
-		panic(err)
-	}
-	status := device.Status()
-	switch status {
-	case firmware.StatusUnpaired:
-		// expected, proceed below.
-	case firmware.StatusRequireAppUpgrade:
-		panic("firmware unsupported, update the bitbox02 library")
-	case firmware.StatusPairingFailed:
-		panic("device was expected to autoconfirm the pairing")
-	default:
-		panic(fmt.Sprintf("unexpected status: %v ", status))
-	}
+func startFirmwareCli(communication firmware.Communication, device *firmware.Device) {
+	fmt.Println("---------------------")
+	fmt.Println(" BitboxBase Firmware ")
+	fmt.Println("---------------------")
 
-	// autoconfirm pairing on the host
-	device.ChannelHashVerify(true)
-
-	status = device.Status()
-	switch status {
-	case firmware.StatusRequireFirmwareUpgrade:
-		panic("have to upgrade firmware")
-	case firmware.StatusInitialized, firmware.StatusUninitialized:
-		fmt.Println("trying DeviceInfo()")
-		info, err := device.DeviceInfo()
-		if err != nil {
-			panic(err)
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Print("-> ")
+	for scanner.Scan() {
+		text := scanner.Text()
+		text = strings.TrimSpace(text)
+		switch (text) {
+		case "bootloader":
+			err := device.UpgradeFirmware()
+			if err != nil {
+				panic(err)
+			}
+			fmt.Print("Reboot successful. Bye!")
+		case "help":
+			fmt.Println("- bootloader: Reboot to bootloader")
+			fmt.Println("- random: Requests a random number")
+			fmt.Println("- quit: Quit")
+		case "quit":
+			return
+		case "random":
+			random, err := device.Random()
+			if err != nil {
+				panic(err)
+			}
+			fmt.Printf("Bitbox generated the following random number: %s\n", hex.EncodeToString(random))
+		case "status":
+			status := device.Status()
+			fmt.Printf("Current status: %s\n", status)
 		}
-		spew.Dump(info)
-	default:
-		panic(fmt.Sprintf("unexpected status: %v ", status))
+		fmt.Print("-> ")
 	}
 }
+
+func startBootloaderCli(communication bootloader.Communication, device *bootloader.Device) {
+	fmt.Println("---------------------")
+	fmt.Println("BitboxBase Bootloader")
+	fmt.Println("---------------------")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Print("-> ")
+	for scanner.Scan() {
+		text := scanner.Text()
+		text = strings.TrimSpace(text)
+		switch (text) {
+		case "hash":
+			firmwareHash, _, err := device.GetHashes(false, false)
+			if err != nil {
+				panic(err)
+			}
+			fmt.Printf("firmware hash returned by bootloader: %x\n", firmwareHash)
+		case "help":
+			fmt.Println("- hash: Display the firmware hash")
+			fmt.Println("- versions: Display signing key versions")
+			fmt.Println("- quit: Quit")
+		case "quit":
+			return
+		case "reboot":
+			err := device.Reboot()
+			if err != nil {
+				panic(err)
+			}
+			fmt.Printf("Rebooted successfully. Bye!")
+			return
+		case "versions":
+			v1, v2, err := device.Versions()
+			if err != nil {
+				panic(err)
+			}
+			fmt.Printf("Versions: %d %d\n", v1, v2)
+		}
+		fmt.Print("-> ")
+	}
+}
+
 
 func hsmBootloaderTest(communication bootloader.Communication) {
 	device := bootloader.NewDevice(
@@ -150,11 +199,7 @@ func hsmBootloaderTest(communication bootloader.Communication) {
 			fmt.Println("status changed:", status)
 		},
 	)
-	firmwareHash, _, err := device.GetHashes(false, false)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("firmware hash returned by bootloader: %x\n", firmwareHash)
+	startBootloaderCli(communication, device)
 }
 
 func hsmTest() {
@@ -162,18 +207,20 @@ func hsmTest() {
 	const firmwareCMD = 0x80 + 0x40 + 0x01
 	const bootloaderCMD = 0x80 + 0x40 + 0x03
 
-	const cmd = firmwareCMD
 	// open device (io.ReadWriteCloser interface with Read, Write, Close functions).
 	// a) can be u2fhid/USB
-	deviceUSB := getBitBox02USB()
-	communication := u2fhid.NewCommunication(deviceUSB, cmd)
+	//deviceUSB := getBitBox02USB()
+	//communication := u2fhid.NewCommunication(deviceUSB, cmd)
 	// b) can be usart/Serial:
-	// deviceUART := getBitBox02UART()
-	// endpoint := byte(0x00) // will be deleted from the spec
-	// communication := usartCommunication{usart.NewCommunication(deviceUART, cmd, endpoint)}
-
-	hsmFirmwareTest(communication)
-
-	// make sure to use bootloaderCMD above
-	//hsmBootloaderTest(communication)
+	deviceUART := getBitBox02UART()
+	firmwareCommunication := usartCommunication{usart.NewCommunication(deviceUART, firmwareCMD)}
+	firmwareDevice, err := hsmFirmwareConnect(firmwareCommunication)
+	if (err == nil) {
+		startFirmwareCli(firmwareCommunication, firmwareDevice)
+	} else {
+		// make sure to use bootloaderCMD above
+		const cmd = bootloaderCMD
+		communication := usartCommunication{usart.NewCommunication(deviceUART, cmd)}
+		hsmBootloaderTest(communication)
+	}
 }
