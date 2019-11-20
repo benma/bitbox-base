@@ -3,13 +3,16 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
+	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/digitalbitbox/bitbox02-api-go/api/bootloader"
+	"github.com/digitalbitbox/bitbox-base/middleware/src/hsm"
+	bb02bootloader "github.com/digitalbitbox/bitbox02-api-go/api/bootloader"
 	"github.com/digitalbitbox/bitbox02-api-go/api/common"
 	"github.com/digitalbitbox/bitbox02-api-go/api/firmware"
-	"github.com/digitalbitbox/bitbox02-api-go/communication/u2fhid"
+	bb02firmware "github.com/digitalbitbox/bitbox02-api-go/api/firmware"
 	"github.com/digitalbitbox/bitbox02-api-go/communication/usart"
 	"github.com/digitalbitbox/bitbox02-api-go/util/semver"
 	"github.com/flynn/noise"
@@ -46,8 +49,11 @@ func getBitBox02USB() io.ReadWriteCloser {
 }
 
 func getBitBox02UART() io.ReadWriteCloser {
-	c := &serial.Config{Name: "/dev/ttyUSB0", Baud: 115200}
-	s, err := serial.OpenPort(c)
+	s, err := serial.OpenPort(&serial.Config{
+		Name:        "/dev/ttyUSB0",
+		Baud:        115200,
+		ReadTimeout: 5 * time.Second,
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -92,13 +98,11 @@ func (communication usartCommunication) SendFrame(msg string) error {
 	return communication.Communication.SendFrame([]byte(msg))
 }
 
-func hsmFirmwareTest(communication firmware.Communication) {
-
-	device := firmware.NewDevice(
-		// hardcoded version for now, in the future can be `nil` with autodetection using OP_INFO
-		semver.NewSemVer(4, 2, 2),
-		// Edition also hardcoded for now, will need to convert the stuff to platform/edition tuples
-		common.EditionStandard,
+func hsmFirmwareTest(communication bb02firmware.Communication) {
+	b := common.ProductBitBoxBaseStandard
+	device := bb02firmware.NewDevice(
+		// version and product infered via OP_INFO
+		semver.NewSemVer(4, 3, 0), &b,
 		&bitbox02Config{},
 		communication,
 		&bitbox02Logger{},
@@ -110,11 +114,11 @@ func hsmFirmwareTest(communication firmware.Communication) {
 	}
 	status := device.Status()
 	switch status {
-	case firmware.StatusUnpaired:
+	case bb02firmware.StatusUnpaired:
 		// expected, proceed below.
-	case firmware.StatusRequireAppUpgrade:
+	case bb02firmware.StatusRequireAppUpgrade:
 		panic("firmware unsupported, update the bitbox02 library")
-	case firmware.StatusPairingFailed:
+	case bb02firmware.StatusPairingFailed:
 		panic("device was expected to autoconfirm the pairing")
 	default:
 		panic(fmt.Sprintf("unexpected status: %v ", status))
@@ -122,32 +126,25 @@ func hsmFirmwareTest(communication firmware.Communication) {
 
 	// autoconfirm pairing on the host
 	device.ChannelHashVerify(true)
-
 	status = device.Status()
 	switch status {
 	case firmware.StatusRequireFirmwareUpgrade:
 		panic("have to upgrade firmware")
-	case firmware.StatusInitialized, firmware.StatusUninitialized:
-		fmt.Println("trying DeviceInfo()")
-		info, err := device.DeviceInfo()
-		if err != nil {
-			panic(err)
-		}
-		spew.Dump(info)
+	case firmware.StatusUninitialized:
+		device.UpgradeFirmware()
 	default:
 		panic(fmt.Sprintf("unexpected status: %v ", status))
 	}
 }
 
-func hsmBootloaderTest(communication bootloader.Communication) {
-	device := bootloader.NewDevice(
+func hsmBootloaderTest(communication bb02bootloader.Communication) {
+	device := bb02bootloader.NewDevice(
 		// hardcoded version for now, in the future can be `nil` with autodetection using OP_INFO
 		semver.NewSemVer(1, 0, 1),
-		// Edition also hardcoded for now, will need to convert the stuff to platform/edition tuples
-		common.EditionStandard,
+		common.ProductBitBoxBaseStandard,
 		communication,
-		func(status *bootloader.Status) {
-			fmt.Println("status changed:", status)
+		func(status *bb02bootloader.Status) {
+			spew.Dump("status changed:", status)
 		},
 	)
 	firmwareHash, _, err := device.GetHashes(false, false)
@@ -155,22 +152,43 @@ func hsmBootloaderTest(communication bootloader.Communication) {
 		panic(err)
 	}
 	fmt.Printf("firmware hash returned by bootloader: %x\n", firmwareHash)
+	//device.Reboot()
+	firmwareBinary, err := ioutil.ReadFile("/home/marko/coding/dbb/bitbox02-firmware/build/bin/firmware-bitboxbase.bin")
+	if err != nil {
+		panic(err)
+	}
+	err = device.UpgradeFirmware(firmwareBinary)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func hsmTest() {
+	device := hsm.NewHSM("/dev/ttyUSB0")
+	if err := device.InteractWithBootloader(func(bootloader *bb02bootloader.Device) {
+		fmt.Println("OK")
+	}); err != nil {
+		panic(fmt.Sprintf("%+v", err))
+	}
+	if err := device.InteractWithFirmware(func(firmware *bb02firmware.Device) {
+		fmt.Println("OK firmware")
+	}); err != nil {
+		panic(err)
+	}
 
+	return
 	const firmwareCMD = 0x80 + 0x40 + 0x01
 	const bootloaderCMD = 0x80 + 0x40 + 0x03
 
 	const cmd = firmwareCMD
+	//const cmd = bootloaderCMD
 	// open device (io.ReadWriteCloser interface with Read, Write, Close functions).
 	// a) can be u2fhid/USB
-	deviceUSB := getBitBox02USB()
-	communication := u2fhid.NewCommunication(deviceUSB, cmd)
+	// deviceUSB := getBitBox02USB()
+	// communication := u2fhid.NewCommunication(deviceUSB, cmd)
 	// b) can be usart/Serial:
-	// deviceUART := getBitBox02UART()
-	// endpoint := byte(0x00) // will be deleted from the spec
-	// communication := usartCommunication{usart.NewCommunication(deviceUART, cmd, endpoint)}
+	deviceUART := getBitBox02UART()
+	communication := usartCommunication{usart.NewCommunication(deviceUART, cmd)}
 
 	hsmFirmwareTest(communication)
 
